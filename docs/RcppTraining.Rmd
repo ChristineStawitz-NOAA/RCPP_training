@@ -1,0 +1,218 @@
+---
+title:  "RCpp introduction"
+subtitle: "FIMS Implementation Team Workshop"
+author: "Christine Stawitz<br>NOAA Fisheries, OST<br>Seattle, WA<br> 2022-03-23"
+output:
+  xaringan::moon_reader:
+    css: ["xaringan-themer.css", "slides-style.css", "tufte.css"]
+    lib_dir: libs
+    nature:
+      ratio: '4:3'
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      slideNumberFormat: |
+        <div class="progress-bar-container">
+          <div class="progress-bar" style="width: calc( (%current% - 1) / (%total% - 1) * 100%);">
+          </div>
+        </div>`
+---
+layout: true
+
+.footnote[U.S. Department of Commerce | National Oceanic and Atmospheric Administration | National Marine Fisheries Service]
+
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+```
+
+```{r xaringan-tile-view, echo=FALSE}
+# this gives you a tile navigation if you type "O" at any time
+xaringanExtra::use_tile_view()
+```
+
+---
+# Sources
+- "Advanced R"  by Hadley Wickham (http://adv-r.had.co.nz/Rcpp.html)
+- "Rcpp: Seamless R and C++ integration" by Dirk Eddelbuetel and Romain Francois, Journal of Statistical Software (https://www.jstatsoft.org/article/view/v040i08)
+
+---
+
+# What is `RCpp` and why should I care?
+
+.bluebox[## Definition
+"The `RCpp` package provides a consistent API for seamlessly accessing, extending or modifying R objects at the C++ level" - Eddelbuttel and Francois.
+]
+
+.yellowbox[## API
+a set of functions and procedures allowing the creation of applications that access the features or data of an operating system, application, or other service.]
+
+* One of the most widely used `R` extensions (over 1000 packages)
+* With very minimal knowledge of `C++` you can speed up function runs A LOT
+- The most efficient `R` functions are written in `C++` and called from `R`
+
+
+---
+# Writing `C++` functions in `R`
+
+* You can write `C++` functions inline in your R code using `cppFunction`
+* You can also compile single lines of code directly using `evalCpp`
+
+```{r}
+library(Rcpp)
+#> 
+#> Attaching package: 'Rcpp'
+#> The following object is masked from 'package:inline':
+#> 
+#>     registerPlugin
+cppFunction('int add(int x, int y, int z) {
+  int sum = x + y + z;
+  return sum;
+}')
+# add works like a regular R function
+add
+add(1, 2, 3)
+evalCpp("std::numeric_limits<double>::max()")
+```
+
+---
+# Calling `C++` from `R`
+
+.pull-left[
+```{Rcpp}
+#include <Rcpp.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+double meanC(NumericVector x) {
+  int n = x.size();
+  double total = 0;
+
+  for(int i = 0; i < n; ++i) {
+    total += x[i];
+  }
+  return total / n;
+}
+
+```
+]
+
+.pull-right[
+* `#include <Rcpp.h>` allows you to call `Rcpp` syntax in the file. You can omit `using namespace Rcpp` if you use `::` i.e. `Rcpp::NumericVector` 
+* `// [[Rcpp::export]]` - put this above any function you want to make available in `R`
+* `NumericVector, .size()` useful type, function implemented in `Rcpp`]
+
+---
+# Calling `C++` from `R`
+.pull-left[
+```{r eval=FALSE}
+sourceCpp("mean.cpp")
+```
+
+
+```{r}
+library(microbenchmark)
+x <- runif(1e5)
+microbenchmark(
+  mean(x),
+  meanC(x)
+)
+
+```
+]
+
+
+.pull-right[
+* `sourceCpp` compiles the file
+* More `Rcpp` syntax [here](https://dirk.eddelbuettel.com/code/rcpp/Rcpp-quickref.pdf)
+]
+---
+# Compiling and running
+
+* Compile your code using the `sourceCpp` `R` function.
+```{r eval=FALSE}
+sourceCpp("test.cpp")
+
+```
+
+
+---
+
+class: middle
+
+# Typing and modules
+
+---
+
+# Typing
+.pull-left-wide[
+
+```{Rcpp}
+#include <Rcpp.h>
+
+RcppExport SEXP convolve3cpp(SEXP a, SEXP b) {
+Rcpp::NumericVector xa(a);
+Rcpp::NumericVector xb(b);
+int n_xa = xa.size(), n_xb = xb.size();
+int nab = n_xa + n_xb - 1;
+Rcpp::NumericVector xab(nab);
+for (int i = 0; i < n_xa; i++)
+for (int j = 0; j < n_xb; j++)
+xab[i + j] += xa[i] * xb[j];
+return xab;
+}
+```
+
+]
+
+.pull-right-narrow[
+- `SEXP` This is an `R` type.
+- 
+]
+
+
+---
+# `SEXP` and `SEXPREC`
+
+- All `R` objects are stored in a common datatype `SEXP` or S - expression.
+ - This is a variant type with subvariants of the types you might expect (e.g. real, int, logical)
+- Technically, a `SEXP` is a pointer to a structure of type `SEXPREC`
+- All `C++` functions you write must take a `SEXP` as input and return an `SEXP`
+---
+# Peeking at `R SEXP`
+
+```{r eval=FALSE}
+library(pryr)
+#> Registered S3 method overwritten by 'pryr':
+#>   method      from
+#>   print.bytes Rcpp
+
+sexp_type(10L)
+#> [1] "INTSXP"
+sexp_type("a")
+#> [1] "STRSXP"
+sexp_type(T)
+#> [1] "LGLSXP"
+sexp_type(list(a = 1))
+#> [1] "VECSXP"
+sexp_type(pairlist(a = 1))
+#> [1] "LISTSXP"
+#> 
+```
+
+.footnote[from http://adv-r.had.co.nz/C-interface.html]
+
+
+---
+
+# `Rcpp` modules
+
+
+
+---
+
+class: middle
+
+# A slide with just a title
+
+---

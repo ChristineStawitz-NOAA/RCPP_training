@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="" xml:lang="">
   <head>
-    <title>Template - Tufte style</title>
+    <title>RCpp introduction</title>
     <meta charset="utf-8" />
-    <meta name="author" content="Eli Holmes NOAA Fisheries, NWFSC Seattle, WA 2022-01-25" />
+    <meta name="author" content="Christine Stawitz NOAA Fisheries, OST Seattle, WA  2022-03-23" />
     <script src="libs/header-attrs/header-attrs.js"></script>
     <link href="libs/tile-view/tile-view.css" rel="stylesheet" />
     <script src="libs/tile-view/tile-view.js"></script>
@@ -15,9 +15,9 @@
     <textarea id="source">
 class: center, middle, inverse, title-slide
 
-# Template - Tufte style
-## Tufte fonts and line spacings
-### Eli Holmes<br>NOAA Fisheries, NWFSC<br>Seattle, WA<br>2022-01-25
+# RCpp introduction
+## FIMS Implementation Team Workshop
+### Christine Stawitz<br>NOAA Fisheries, OST<br>Seattle, WA<br> 2022-03-23
 
 ---
 
@@ -31,120 +31,212 @@ layout: true
 
 
 ---
-
-# Notes
-
-The template and css makes a presentation that is vaguely like a Tufte handout in that it has Tufte font and you can have side notes.
-
-* I have tweaked the title slide css in `slides-style.css` and needed to remove `date:` from the yaml.
-* `slides-style.css` has a number of extra customizations such as square for the bullets, some colored boxes, and a wide left column class.
-* I couldn't get `self_contained: true` to work for this one so you cannot make a self-contained html file.
+# Sources
+- "Advanced R"  by Hadley Wickham (http://adv-r.had.co.nz/Rcpp.html)
+- "Rcpp: Seamless R and C++ integration" by Dirk Eddelbuetel and Romain Francois, Journal of Statistical Software (https://www.jstatsoft.org/article/view/v040i08)
 
 ---
 
-## Tufte style
+# What is `RCpp` and why should I care?
 
-### Changes
+.bluebox[## Definition
+"The `RCpp` package provides a consistent API for seamlessly accessing, extending or modifying R objects at the C++ level" - Eddelbuttel and Francois.
+]
 
-.pull-left-wide[
-1. The Tufte style is best known for sidenotes `\(^1\)` but also has a number of other features.  
-  - Tufte font
-  - Specific size ratios for text to headers
-  - Different line spacing
-1. The Tufte style is specified in the `tufte.css`
-]
-.pull-right-narrow[
-.hand-blue[
-You can add sidenotes. Here I have wrapped the text in `.hand-blue` to make it smaller and blue.
+.yellowbox[## API
+a set of functions and procedures allowing the creation of applications that access the features or data of an operating system, application, or other service.]
 
-`\(^1\)` In order to add a sidenote with number, you'll have to do that manually.
-]
-]
+* One of the most widely used `R` extensions (over 1000 packages)
+* With very minimal knowledge of `C++` you can speed up function runs A LOT
+- The most efficient `R` functions are written in `C++` and called from `R`
+
 
 ---
+# Writing `C++` functions in `R`
 
-## You can put anything in the side margin
-
-
-.pull-left-wide[
-The side margin is not limited to text.
-
-- Figures
-- References
-- Images
-
-Everything will get scaled to fit.
-]
-.pull-right-narrow[
-.hand-blue[
-
-```r
-plot(1:10)
-```
-
-![](template-tufte_files/figure-html/unnamed-chunk-1-1.png)&lt;!-- --&gt;
-
-![](static/slideswooshver.png)
-]
-]
-
----
-
-# Footnotes
-
-Because the NMFS footnote is already occupying the footnote space, you need to add some linefeeds to move the footnote upward. 
-
-
-
-- some content
-- a [link](http://www.google.com)
-
+* You can write `C++` functions inline in your R code using `cppFunction`
+* You can also compile single lines of code directly using `evalCpp`
 
 
 ```r
-r &lt;- 2 + 2
+library(Rcpp)
+#&gt; 
+#&gt; Attaching package: 'Rcpp'
+#&gt; The following object is masked from 'package:inline':
+#&gt; 
+#&gt;     registerPlugin
+cppFunction('int add(int x, int y, int z) {
+  int sum = x + y + z;
+  return sum;
+}')
+# add works like a regular R function
+add
 ```
 
-.footnote[It is quite finicky. Add a linefeed and it breaks.&lt;br&gt;&lt;br&gt;]
+```
+## function (x, y, z) 
+## .Call(&lt;pointer: 0x0000000071281580&gt;, x, y, z)
+```
 
+```r
+add(1, 2, 3)
+```
+
+```
+## [1] 6
+```
+
+```r
+evalCpp("std::numeric_limits&lt;double&gt;::max()")
+```
+
+```
+## [1] 1.797693e+308
+```
+
+---
+# Calling `C++` from `R`
+
+.pull-left[
+
+```cpp
+#include &lt;Rcpp.h&gt;
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+double meanC(NumericVector x) {
+  int n = x.size();
+  double total = 0;
+
+  for(int i = 0; i &lt; n; ++i) {
+    total += x[i];
+  }
+  return total / n;
+}
+
+```
+]
+
+.pull-right[
+* `#include &lt;Rcpp.h&gt;` allows you to call `Rcpp` syntax in the file. You can omit `using namespace Rcpp` if you use `::` i.e. `Rcpp::NumericVector` 
+* `// [[Rcpp::export]]` - put this above any function you want to make available in `R`
+* `NumericVector, .size()` useful type, function implemented in `Rcpp`]
+
+---
+# Calling `C++` from `R`
+.pull-left[
+
+```r
+sourceCpp("mean.cpp")
+```
+
+
+
+```r
+library(microbenchmark)
+x &lt;- runif(1e5)
+microbenchmark(
+  mean(x),
+  meanC(x)
+)
+```
+
+```
+## Unit: microseconds
+##      expr   min     lq    mean median     uq    max neval
+##   mean(x) 148.1 153.25 166.028  156.7 167.40  312.4   100
+##  meanC(x)  98.7 101.70 121.053  106.8 116.05 1051.8   100
+```
+]
+
+
+.pull-right[
+* `sourceCpp` compiles the file
+* More `Rcpp` syntax [here](https://dirk.eddelbuettel.com/code/rcpp/Rcpp-quickref.pdf)
+]
+---
+# Compiling and running
+
+* Compile your code using the `sourceCpp` `R` function.
+
+```r
+sourceCpp("test.cpp")
+```
 
 
 ---
 
-# `slides-style.css` has boxes
+class: middle
 
-.bluebox[## Blue box
-- The ## header will appear at the top in grey
-- Or leave it off and add different text or header
-]
-
-.orangebox[## Orange box
-&lt;img src="template-tufte_files/figure-html/unnamed-chunk-3-1.png" style="display: block; margin: auto;" /&gt;
-]
-
-.yellowbox[## Yellow box
-A note.
-]
+# Typing and modules
 
 ---
 
-# Boxes and side notes
-
+# Typing
 .pull-left-wide[
-.orangebox[## Orange box
-&lt;img src="template-tufte_files/figure-html/unnamed-chunk-4-1.png" style="display: block; margin: auto;" /&gt;
-]
+
+
+```cpp
+#include &lt;Rcpp.h&gt;
+
+RcppExport SEXP convolve3cpp(SEXP a, SEXP b) {
+Rcpp::NumericVector xa(a);
+Rcpp::NumericVector xb(b);
+int n_xa = xa.size(), n_xb = xb.size();
+int nab = n_xa + n_xb - 1;
+Rcpp::NumericVector xab(nab);
+for (int i = 0; i &lt; n_xa; i++)
+for (int j = 0; j &lt; n_xb; j++)
+xab[i + j] += xa[i] * xb[j];
+return xab;
+}
+```
+
 ]
 
 .pull-right-narrow[
-.hand-blue[
-You can add sidenotes. Here I have wrapped the text in `.hand-blue` to make it smaller and blue.
+- `SEXP` This is an `R` type.
+- 
 ]
 
-.small[`.small` also works but the text is not itallic or blue. Note you need a linefeed in the sidenote code.
-]
 
-.small[If you leave off the line-feed, then it will use a span element and won't pick up the right line-height spacing.]]
+---
+# `SEXP` and `SEXPREC`
+
+- All `R` objects are stored in a common datatype `SEXP` or S - expression.
+ - This is a variant type with subvariants of the types you might expect (e.g. real, int, logical)
+- Technically, a `SEXP` is a pointer to a structure of type `SEXPREC`
+- All `C++` functions you write must take a `SEXP` as input and return an `SEXP`
+---
+# Peeking at `R SEXP`
+
+
+```r
+library(pryr)
+#&gt; Registered S3 method overwritten by 'pryr':
+#&gt;   method      from
+#&gt;   print.bytes Rcpp
+
+sexp_type(10L)
+#&gt; [1] "INTSXP"
+sexp_type("a")
+#&gt; [1] "STRSXP"
+sexp_type(T)
+#&gt; [1] "LGLSXP"
+sexp_type(list(a = 1))
+#&gt; [1] "VECSXP"
+sexp_type(pairlist(a = 1))
+#&gt; [1] "LISTSXP"
+#&gt; 
+```
+
+.footnote[from http://adv-r.had.co.nz/C-interface.html]
+
+
+---
+
+# `Rcpp` modules
+
 
 
 ---
@@ -154,65 +246,6 @@ class: middle
 # A slide with just a title
 
 ---
-
-## Two column format
-
-.pull-left[
-- **ggplot2** is tidyverse's data visualization package
-- The `gg` in "ggplot2" stands for Grammar of Graphics
-- It is inspired by the book **Grammar of Graphics** by Leland Wilkinson
-]
-.pull-right[
-- **ggplot2** is tidyverse's data visualization package
-- The `gg` in "ggplot2" stands for Grammar of Graphics
-- It is inspired by the book **Grammar of Graphics** by Leland Wilkinson
-]
-
----
-
-## Three column format
-
-.three-column[
-Column 1
-
-You can have code.
-
-
-```r
-lm(mpg ~ hp, data=mtcars)
-```
-
-```
-## 
-## Call:
-## lm(formula = mpg ~ hp, data = mtcars)
-## 
-## Coefficients:
-## (Intercept)           hp  
-##    30.09886     -0.06823
-```
-]
-
-.three-column[
-Column 2
-
-You can have images and embed video.
-
-![](static/slideswooshver.png)
-
-&lt;iframe width="200" height="130" src="https://www.youtube.com/embed/BCMjVc9ncFo" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen&gt;&lt;/iframe&gt;
-]
-
-.three-column[
-Column 3
-
-&amp;#127758; January 25, 2022 
-
-&amp;#127767; 09:00 - 17:00  
-
-&amp;#127881;    [rverse](http://rverse-tutorials.github.io)
-
-]
     </textarea>
 <style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
