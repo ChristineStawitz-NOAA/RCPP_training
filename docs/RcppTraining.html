@@ -32,8 +32,10 @@ layout: true
 
 ---
 # Sources
-- "Advanced R"  by Hadley Wickham (http://adv-r.had.co.nz/Rcpp.html)
-- "Rcpp: Seamless R and C++ integration" by Dirk Eddelbuetel and Romain Francois, Journal of Statistical Software (https://www.jstatsoft.org/article/view/v040i08)
+- "Advanced `R`"  by Hadley Wickham (http://adv-r.had.co.nz/Rcpp.html)
+- "`Rcpp`: Seamless `R` and `C++` integration" by Dirk Eddelbutel and Romain Francois, Journal of Statistical Software (https://www.jstatsoft.org/article/view/v040i08)
+- "`Rcpp` for everyone" by Masaki E. Tsuda (https://teuder.github.io/rcpp4everyone_en/)
+- "Extending `Rcpp`" vignette by EddelButel and Francois
 
 ---
 
@@ -60,11 +62,6 @@ a set of functions and procedures allowing the creation of applications that acc
 
 ```r
 library(Rcpp)
-#&gt; 
-#&gt; Attaching package: 'Rcpp'
-#&gt; The following object is masked from 'package:inline':
-#&gt; 
-#&gt;     registerPlugin
 cppFunction('int add(int x, int y, int z) {
   int sum = x + y + z;
   return sum;
@@ -98,6 +95,7 @@ evalCpp("std::numeric_limits&lt;double&gt;::max()")
 # Calling `C++` from `R`
 
 .pull-left[
+mean.cpp
 
 ```cpp
 #include &lt;Rcpp.h&gt;
@@ -120,7 +118,7 @@ double meanC(NumericVector x) {
 .pull-right[
 * `#include &lt;Rcpp.h&gt;` allows you to call `Rcpp` syntax in the file. You can omit `using namespace Rcpp` if you use `::` i.e. `Rcpp::NumericVector` 
 * `// [[Rcpp::export]]` - put this above any function you want to make available in `R`
-* `NumericVector, .size()` useful type, function implemented in `Rcpp`]
+* `NumericVector` useful type implemented in `Rcpp`]
 
 ---
 # Calling `C++` from `R`
@@ -144,8 +142,8 @@ microbenchmark(
 ```
 ## Unit: microseconds
 ##      expr   min     lq    mean median     uq    max neval
-##   mean(x) 148.1 153.25 166.028  156.7 167.40  312.4   100
-##  meanC(x)  98.7 101.70 121.053  106.8 116.05 1051.8   100
+##   mean(x) 148.1 153.05 168.041 159.65 171.15  306.1   100
+##  meanC(x)  98.7 101.55 122.962 105.75 113.55 1445.2   100
 ```
 ]
 
@@ -154,15 +152,6 @@ microbenchmark(
 * `sourceCpp` compiles the file
 * More `Rcpp` syntax [here](https://dirk.eddelbuettel.com/code/rcpp/Rcpp-quickref.pdf)
 ]
----
-# Compiling and running
-
-* Compile your code using the `sourceCpp` `R` function.
-
-```r
-sourceCpp("test.cpp")
-```
-
 
 ---
 
@@ -172,33 +161,58 @@ class: middle
 
 ---
 
-# Typing
-.pull-left-wide[
+# Typing and methods
+.pull-left-narrow[
+- Scalar classes
+* `int`
+* `double`
+* `bool`
+* `String`
+- vector classes
+* `IntegerVector`
+* `NumericVector`
+* `LogicalVector`
+* `CharacterVector`
+]
+
+.pull-right-wide[
+- Vector classes have useful static methods (called with `::` on class) 
+
+
+```cpp
+NumericVector v = NumericVector::create(1,2,3);
+NumericVector::get_NA();
+```
+
+- Member functions or methods (called with `.` on object)
+
+```cpp
+v.size();
+v.push_back(4);
+```
+appends argument to the end of the `NumericVector v` 
+]
+
+
+---
+# Typing and methods example
 
 
 ```cpp
 #include &lt;Rcpp.h&gt;
+using namespace Rcpp;
 
-RcppExport SEXP convolve3cpp(SEXP a, SEXP b) {
-Rcpp::NumericVector xa(a);
-Rcpp::NumericVector xb(b);
-int n_xa = xa.size(), n_xb = xb.size();
-int nab = n_xa + n_xb - 1;
-Rcpp::NumericVector xab(nab);
-for (int i = 0; i &lt; n_xa; i++)
-for (int j = 0; j &lt; n_xb; j++)
-xab[i + j] += xa[i] * xb[j];
-return xab;
+// [[Rcpp::export]]
+NumericVector attribs() {
+  NumericVector out = NumericVector::create(1, 2, 3);
+
+  out.names() = CharacterVector::create("a", "b", "c");
+  out.attr("my-attr") = "my-value";
+  out.attr("class") = "my-class";
+
+  return out;
 }
 ```
-
-]
-
-.pull-right-narrow[
-- `SEXP` This is an `R` type.
-- 
-]
-
 
 ---
 # `SEXP` and `SEXPREC`
@@ -206,7 +220,7 @@ return xab;
 - All `R` objects are stored in a common datatype `SEXP` or S - expression.
  - This is a variant type with subvariants of the types you might expect (e.g. real, int, logical)
 - Technically, a `SEXP` is a pointer to a structure of type `SEXPREC`
-- All `C++` functions you write must take a `SEXP` as input and return an `SEXP`
+
 ---
 # Peeking at `R SEXP`
 
@@ -232,6 +246,58 @@ sexp_type(pairlist(a = 1))
 
 .footnote[from http://adv-r.had.co.nz/C-interface.html]
 
+---
+# Casting using `as` and `wrap`
+.pull-left[
+
+```cpp
+#include &lt;Rcpp.h&gt;
+using namespace Rcpp;
+
+template &lt;typename T&gt;
+T meanC(std::vector&lt;T&gt; x) {
+  int n = x.size();
+  float total = 0;
+  
+  for(int i = 0; i &lt; n; ++i) {
+    total += x[i];
+  }
+  return total / n;
+}
+
+// [[Rcpp::export]]
+SEXP mean_wrap(SEXP input){
+  std::vector&lt;double&gt; x = as&lt;std::vector&lt;double&gt;&gt;(input);
+  float mean = meanC(x);
+  
+  return wrap(mean);
+}
+```
+]
+.pull-right[
+
+```cpp
+#include &lt;Rcpp.h&gt;
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+double meanC(NumericVector x) {
+  int n = x.size();
+  double total = 0;
+
+  for(int i = 0; i &lt; n; ++i) {
+    total += x[i];
+  }
+  return total / n;
+}
+
+```
+]
+
+---
+
+---
+# Including `Rcpp` in your `R` package
 
 ---
 
@@ -241,9 +307,7 @@ sexp_type(pairlist(a = 1))
 
 ---
 
-class: middle
-
-# A slide with just a title
+# `Rcpp` sugar
 
 ---
     </textarea>
