@@ -33,9 +33,9 @@ layout: true
 ---
 # Sources
 - "Advanced `R`"  by Hadley Wickham (http://adv-r.had.co.nz/Rcpp.html)
-- "`Rcpp`: Seamless `R` and `C++` integration" by Dirk Eddelbutel and Romain Francois, Journal of Statistical Software (https://www.jstatsoft.org/article/view/v040i08)
+- "`Rcpp`: Seamless `R` and `C++` integration" by Dirk Eddelbuttel and Romain Francois, Journal of Statistical Software (https://www.jstatsoft.org/article/view/v040i08)
 - "`Rcpp` for everyone" by Masaki E. Tsuda (https://teuder.github.io/rcpp4everyone_en/)
-- "Extending `Rcpp`" vignette by EddelButel and Francois
+- "`Rcpp` Modules" vignette by Eddelbuttel and Francois (https://cran.rstudio.com/web/packages/Rcpp/vignettes/Rcpp-modules.pdf)
 
 ---
 
@@ -59,6 +59,7 @@ a set of functions and procedures allowing the creation of applications that acc
 * You can write `C++` functions inline in your R code using `cppFunction`
 * You can also compile single lines of code directly using `evalCpp`
 
+In R script or console:
 
 ```r
 library(Rcpp)
@@ -118,7 +119,7 @@ double meanC(NumericVector x) {
 .pull-right[
 * `#include &lt;Rcpp.h&gt;` allows you to call `Rcpp` syntax in the file. You can omit `using namespace Rcpp` if you use `::` i.e. `Rcpp::NumericVector` 
 * `// [[Rcpp::export]]` - put this above any function you want to make available in `R`
-* `NumericVector` useful type implemented in `Rcpp`]
+* `NumericVector, .size()` useful type, function implemented in `Rcpp`]
 
 ---
 # Calling `C++` from `R`
@@ -141,9 +142,9 @@ microbenchmark(
 
 ```
 ## Unit: microseconds
-##      expr   min     lq    mean median     uq    max neval
-##   mean(x) 148.1 153.05 168.041 159.65 171.15  306.1   100
-##  meanC(x)  98.7 101.55 122.962 105.75 113.55 1445.2   100
+##      expr   min     lq    mean median    uq    max neval
+##   mean(x) 520.7 613.85 644.544 628.10 660.1 1028.1   100
+##  meanC(x) 322.8 405.70 450.245 420.55 430.0 3220.7   100
 ```
 ]
 
@@ -177,26 +178,222 @@ class: middle
 
 .pull-right-wide[
 - Vector classes have useful static methods (called with `::` on class) 
-
-
-```cpp
-NumericVector v = NumericVector::create(1,2,3);
-NumericVector::get_NA();
-```
-
+  
+  ```cpp
+   NumericVector v = NumericVector::create(1,2,3);
+  NumericVector::get_NA(); 
+  ```
 - Member functions or methods (called with `.` on object)
+  
+  ```cpp
+  v.size(); 
+  v.push_back(4);
+  ```
+  operate on object `v`
+]
+
+---
+# Casting using `wrap` and `as`
+
+.pull-left-wide[
 
 ```cpp
-v.size();
-v.push_back(4);
+#include &lt;Rcpp.h&gt;
+using namespace Rcpp;
+
+template &lt;typename T&gt;
+T meanC(std::vector&lt;T&gt; x) {
+  int n = x.size();
+  float total = 0;
+  
+  for(int i = 0; i &lt; n; ++i) {
+    total += x[i];
+  }
+  return total / n;
+}
+
+// [[Rcpp::export]]
+SEXP mean_wrap(SEXP input){
+  std::vector&lt;double&gt; x = as&lt;std::vector&lt;double&gt;&gt;(input);
+  float mean = meanC(x);
+  
+  return wrap(mean);
+}
 ```
-appends argument to the end of the `NumericVector v` 
 ]
+.pull-right-narrow[
+
+```cpp
+#include &lt;Rcpp.h&gt;
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+double meanC(NumericVector x) {
+  int n = x.size();
+  double total = 0;
+
+  for(int i = 0; i &lt; n; ++i) {
+    total += x[i];
+  }
+  return total / n;
+}
+
+```
+]
+
+---
+# Including `Rcpp` in your `R` package
+
+* Easiest to set up an `R` package as an `Rcpp` package from the beginning
+* `Rcpp.package.skeleton` creates a basic skeleton of a `Rcpp` package
+
+
+```r
+library(Rcpp)
+Rcpp.package.skeleton("helloworld")
+```
+
+* Edits `DESCRIPTION` and `NAMESPACE` files
+* Makes .cpp file and `RcppExports.cpp` file in src/
+
+---
+
+# `Rcpp` modules
+
+* Writing modules in `Rcpp` requires you to "expose" every member of a class.
+* Consider this `Uniform` class
+  * We need to expose the the constructor and the `draw()` method
+
+
+```cpp
+#include &lt;Rcpp.h&gt;
+using namespace Rcpp;
+
+
+class Uniform {
+public:
+  
+  Uniform(double min_, double max_) :
+  min(min_), max(max_) {}
+  
+  NumericVector draw(int n) {
+    RNGScope scope;
+    return runif(n, min, max);
+  }
+  
+  double min, max;
+};
+```
 
 
 ---
-# Typing and methods example
+# `Rcpp` modules
 
+
+
+```cpp
+RCPP_MODULE(unif_module) {
+class_&lt;Uniform&gt;("Uniform")
+.constructor&lt;double,double&gt;()
+.field("min", &amp;Uniform::min, "minimum value")
+.field("max", &amp;Uniform::max, "maximum value")
+.method("draw", &amp;Uniform::draw)
+;
+}
+```
+
+* You can expose these using the `Rcpp` macro `RCPP_MODULE`
+* the `class_&lt;Uniform&gt;` constructor argument is what we will call the class from `R`
+* `.field`, `.constructor`, `.method`, `.property` 
+* `.field` can be used with two or three arguments
+* `.field_readonly` prevents it from being modified from `R` 
+
+
+---
+# Calling `Rcpp` from `R`
+
+
+```r
+require(Rcpp)
+require(inline)
+sourceCpp("module_example.cpp")
+u &lt;- new(Uniform, 0, 10)
+u$draw(10L)
+u$max &lt;- 1
+u$draw(10)
+```
+
+---
+
+# Adding `Roxygen` documentation to `Rcpp` modules
+
+
+```cpp
+//' @name Uniform
+//' @title Generates a uniform random variable
+//' @description Type the name of the class to see its methods
+//' @field new Constructor \itemize{
+//' \item min: the minimum bound of the uniform distribution
+//' \item max: the maximum bound of the uniform distribution 
+//' }
+//' @field draw Draw one or more uniform random variables uniform \itemize{
+//' \item n: int that represents the number of values to draw
+//' \item a NumericVector of length n of draws from the distribution
+//' }
+```
+
+- Adding documentation above `Rcpp` module in a package like this will be built if you run `roxygenize()`
+
+---
+
+# `Rcpp sugar`
+
+What is sugar?
+.bluebox[
+Uses expression templates to allow you to write in `Rcpp` at a higher level of abstraction (a.k.a. more like `R`).
+]
+
+
+```cpp
+#include &lt;Rcpp.h&gt;
+using namespace Rcpp;
+IntegerVector x = seq_len( 1000 );
+all( x*x &lt; 3 );
+any( x*x &lt; 3 );
+```
+
+- set of handy functions like `seq_len`,  `all`, and `any`
+- vectorization
+
+---
+# `Rcpp sugar`
+
+`Rcpp sugar` provides the `d, q, p, r` statistical functions you know from `R`.
+
+
+```cpp
+x1 = dnorm(y1, 0, 1); // density of y1 at m=0, sd=1
+x2 = qnorm(y2, 0, 1); // quantiles of y2
+x3 = pnorm(y3, 0, 1); // distribution function of y3
+x4 = rnorm(n, 0, 1); // ’n’ RNG draws of N(0, 1
+```
+
+
+```cpp
+template &lt;typename T&gt;
+T square( const T&amp; x){
+return x * x ;
+}
+sapply( seq_len(10), square&lt;int&gt; ) ;
+```
+---
+class: middle
+
+# Extra slides
+
+---
+# Typing and methods example
+.pull-left-wide[
 
 ```cpp
 #include &lt;Rcpp.h&gt;
@@ -213,7 +410,12 @@ NumericVector attribs() {
   return out;
 }
 ```
+]
 
+.pull-right-narrow[
+- `NumericVector` is the object return type
+- `NumericVector` has `::create()` static method to initialize a vector
+]
 ---
 # `SEXP` and `SEXPREC`
 
@@ -246,70 +448,7 @@ sexp_type(pairlist(a = 1))
 
 .footnote[from http://adv-r.had.co.nz/C-interface.html]
 
----
-# Casting using `as` and `wrap`
-.pull-left[
 
-```cpp
-#include &lt;Rcpp.h&gt;
-using namespace Rcpp;
-
-template &lt;typename T&gt;
-T meanC(std::vector&lt;T&gt; x) {
-  int n = x.size();
-  float total = 0;
-  
-  for(int i = 0; i &lt; n; ++i) {
-    total += x[i];
-  }
-  return total / n;
-}
-
-// [[Rcpp::export]]
-SEXP mean_wrap(SEXP input){
-  std::vector&lt;double&gt; x = as&lt;std::vector&lt;double&gt;&gt;(input);
-  float mean = meanC(x);
-  
-  return wrap(mean);
-}
-```
-]
-.pull-right[
-
-```cpp
-#include &lt;Rcpp.h&gt;
-using namespace Rcpp;
-
-// [[Rcpp::export]]
-double meanC(NumericVector x) {
-  int n = x.size();
-  double total = 0;
-
-  for(int i = 0; i &lt; n; ++i) {
-    total += x[i];
-  }
-  return total / n;
-}
-
-```
-]
-
----
-
----
-# Including `Rcpp` in your `R` package
-
----
-
-# `Rcpp` modules
-
-
-
----
-
-# `Rcpp` sugar
-
----
     </textarea>
 <style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
